@@ -1,0 +1,125 @@
+version: "3.8"
+services:
+  mysql:
+    image: anhdobui/mysql-init
+    environment:
+      MYSQL_DATABASE: coco
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3308:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - db_data_1:/var/lib/mysql
+
+  mssql:
+    image: anhdobui/mssql-init
+    restart: always
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Doba@2002"
+      MSSQL_TCP_ENABLED: "true"
+    ports:
+      - "1434:1433"
+    volumes:
+      - mssql:/var/opt/mssql
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P Doba@2002 -Q 'SELECT 1'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  server_be:
+    image: anhdobui/project_server_be
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/coco
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  web:
+    image: anhdobui/project_web
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+    depends_on:
+      - mysql
+      - server_be
+
+  admin:
+    image: anhdobui/project_admin
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+    depends_on:
+      - mysql
+      - mssql
+      - server_be
+
+  app-etl:
+    image: anhdobui/project_app_etl
+    environment:
+      DB_HOST_MYSQL: mysql
+      DB_PORT_MYSQL: 3306
+      DB_USER_MYSQL: root
+      DB_PASSWORD_MYSQL: "root"
+      DB_NAME_MYSQL: coco
+      DB_HOST_MSSQL: mssql
+      DB_PORT_MSSQL: 1433
+      DB_USER_MSSQL: sa
+      DB_PASSWORD_MSSQL: "Doba@2002"
+      DB_NAME_MSSQL: staging
+    depends_on:
+      mssql:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+
+  sv_dashboard:
+    image: anhdobui/project_sv_dashboard
+    ports:
+      - "3214:3214"
+    environment:
+      PORT: 3214
+      DB_HOST_MSSQL: mssql
+      DB_PORT_MSSQL: 1433
+      DB_USER_MSSQL: sa
+      DB_PASSWORD_MSSQL: "Doba@2002"
+      DB_NAME_MSSQL: cubes_htttql
+    depends_on:
+      mssql:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+
+  download_file:
+    image: anhdobui/project_download_file
+    ports:
+      - "3007:3007"
+    environment:
+      PORT: 3007
+      DB_USER: sa
+      DB_PASSWORD: "Doba@2002"
+      DB_SERVER: mssql
+      DB_DATABASE: dwh_htttql
+      DB_PORT: 1433
+    depends_on:
+      mssql:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+
+volumes:
+  db_data_1:
+  mssql:
+# /opt/mssql-tools/bin/sqlcmd -S localhost -U SA -P "Doba@2002"
